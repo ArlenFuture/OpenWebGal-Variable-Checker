@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenWebGal 變數檢查工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        input[type="file"] {
+            margin-bottom: 20px;
+        }
+        #output {
+            white-space: pre-wrap;
+            background-color: #f5f5f5;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+
+<h1>OpenWebGal 變數檢查工具</h1>
+<p>上傳多個 txt 文件，從 <strong>start.txt</strong> 開始，檢查變數宣告與使用情況。</p>
+
+<input type="file" id="fileInput" multiple>
+<button onclick="checkVariables()">檢查變數</button>
+
+<h2>結果：</h2>
+<div id="output"></div>
+
+<script>
+    function checkVariables() {
+        const fileInput = document.getElementById('fileInput');
+        const output = document.getElementById('output');
+        output.textContent = '';  // 清空之前的結果
+
+        const declaredVars = new Set();
+        const usedVars = new Map(); // 用來追蹤使用的變數和行號
+        const filesMap = new Map(); // 儲存所有文件的內容，key 是文件名，value 是內容
+        let filesToCheck = ['start.txt']; // 初始從 start.txt 開始檢查
+        const sceneLinks = new Set(); // 儲存已檢查過的場景，避免重複檢查
+
+        const files = fileInput.files;
+        if (!files.length) {
+            alert('請先上傳文件');
+            return;
+        }
+
+        // 先讀取所有文件並存入 filesMap
+        for (let file of files) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                filesMap.set(file.name, event.target.result);
+                
+                // 當所有文件都讀取完成後，開始檢查
+                if (filesMap.size === files.length) {
+                    processFiles();
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function processFiles() {
+            // 逐步檢查從 start.txt 開始的所有檔案
+            while (filesToCheck.length > 0) {
+                const currentFile = filesToCheck.shift();
+                if (!filesMap.has(currentFile)) {
+                    output.textContent += `檔案未找到：${currentFile}\n`;
+                    continue;
+                }
+
+                const lines = filesMap.get(currentFile).split('\n');
+                lines.forEach((line, index) => {
+                    line = line.trim();
+
+                    // 檢查變數宣告 (e.g., setVar:varName=value)
+                    const declareMatch = line.match(/setVar:(\w+)\s*=/);
+                    if (declareMatch) {
+                        const varName = declareMatch[1];
+                        declaredVars.add(varName);  // 加入宣告的變數集合
+                    }
+
+                    // 檢查變數使用 (e.g., when=varName==true)
+                    const useMatch = line.match(/(\w+)==/);
+                    if (useMatch) {
+                        const usedVar = useMatch[1];
+                        if (!usedVars.has(usedVar)) {
+                            usedVars.set(usedVar, []);
+                        }
+                        usedVars.get(usedVar).push({ file: currentFile, line: index + 1 });
+                    }
+
+                    // 檢查場景跳轉 (e.g., changeScene:Chapter-1.txt)
+                    const sceneMatch = line.match(/changeScene:(\S+\.txt)/);
+                    if (sceneMatch) {
+                        const nextScene = sceneMatch[1];
+                        if (!sceneLinks.has(nextScene)) {
+                            sceneLinks.add(nextScene);
+                            filesToCheck.push(nextScene);
+                        }
+                    }
+                });
+            }
+
+            // 所有文件處理完後進行結果檢查
+            checkResults();
+        }
+
+        function checkResults() {
+            let result = '';
+
+            usedVars.forEach((lines, varName) => {
+                if (!declaredVars.has(varName)) {
+                    result += `未宣告的變數：${varName}，出現在下列行號：\n`;
+                    lines.forEach(loc => {
+                        result += `  - 檔案：${loc.file}，行號：${loc.line}\n`;
+                    });
+                } else if (isCaseMismatch(varName)) {
+                    result += `大小寫錯誤的變數：${varName}，可能是：${findCorrectCase(varName)}\n`;
+                }
+            });
+
+            if (!result) {
+                result = '所有變數都已正確宣告，無大小寫錯誤。';
+            }
+            output.textContent = result;
+        }
+
+        function isCaseMismatch(varName) {
+            return [...declaredVars].some(v => v.toLowerCase() === varName.toLowerCase() && v !== varName);
+        }
+
+        function findCorrectCase(varName) {
+            return [...declaredVars].find(v => v.toLowerCase() === varName.toLowerCase());
+        }
+    }
+</script>
+
+</body>
+</html>

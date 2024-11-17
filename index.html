@@ -23,7 +23,7 @@
 <body>
 
 <h1>OpenWebGal 變數檢查工具</h1>
-<p>上傳多個 txt 文件，從 <strong>start.txt</strong> 開始，檢查變數宣告與使用情況。</p>
+<p>上傳多個 txt 文件，從 <strong>start.txt</strong> 開始，檢查變數宣告與使用情況，並檢測空格問題。</p>
 
 <input type="file" id="fileInput" multiple>
 <button onclick="checkVariables()">檢查變數</button>
@@ -35,7 +35,7 @@
     function checkVariables() {
         const fileInput = document.getElementById('fileInput');
         const output = document.getElementById('output');
-        output.textContent = '';  // 清空之前的結果
+        output.textContent = ''; // 清空之前的結果
 
         const declaredVars = new Set();
         const usedVars = new Map(); // 用來追蹤使用的變數和行號
@@ -49,12 +49,19 @@
             return;
         }
 
+        // 定義例外的白名單格式
+        const exceptionPatterns = [
+            /^bgm:/, // 例外：以 "bgm:" 開頭
+            /^unlockBgm:.*?-name=.*?;/, // 例外：以 "unlockBgm:" 開頭，且有 "-name=" 格式
+            /-enter=\d+;/ // 例外：包含 "-enter=" 數字和分號
+        ];
+
         // 先讀取所有文件並存入 filesMap
         for (let file of files) {
             const reader = new FileReader();
             reader.onload = function(event) {
                 filesMap.set(file.name, event.target.result);
-                
+
                 // 當所有文件都讀取完成後，開始檢查
                 if (filesMap.size === files.length) {
                     processFiles();
@@ -76,11 +83,24 @@
                 lines.forEach((line, index) => {
                     line = line.trim();
 
+                    // 如果符合例外白名單，直接跳過檢查
+                    if (exceptionPatterns.some(pattern => pattern.test(line))) {
+                        return;
+                    }
+
+                    // 檢查空格問題
+                    if (line.includes('　')) {
+                        output.textContent += `全形空格警告：檔案 ${currentFile} 第 ${index + 1} 行\n`;
+                    }
+                    if (/ {2,}/.test(line)) {
+                        output.textContent += `重複空格警告：檔案 ${currentFile} 第 ${index + 1} 行\n`;
+                    }
+
                     // 檢查變數宣告 (e.g., setVar:varName=value)
                     const declareMatch = line.match(/setVar:(\w+)\s*=/);
                     if (declareMatch) {
                         const varName = declareMatch[1];
-                        declaredVars.add(varName);  // 加入宣告的變數集合
+                        declaredVars.add(varName); // 加入宣告的變數集合
                     }
 
                     // 檢查變數使用 (e.g., when=varName==true)
@@ -126,7 +146,7 @@
             if (!result) {
                 result = '所有變數都已正確宣告，無大小寫錯誤。';
             }
-            output.textContent = result;
+            output.textContent += result;
         }
 
         function isCaseMismatch(varName) {
